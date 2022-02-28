@@ -1,0 +1,163 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+#install.packages("tidyverse")
+#install.packages("corrplot")
+
+```
+
+```{r}
+library("tidyverse")
+library("corrplot")
+library(kernlab)
+library(neuralnet)
+```
+
+
+#1 Read the data
+```{r}
+Premier <- read.csv("premierLeague.csv", stringsAsFactors = T)
+head(Premier)
+```
+
+```{r}
+Premier <- subset(Premier, select = -c(Match_Name : Captain))
+head(Premier)
+```
+
+#2 Stepwise, find the regression to predict socre
+```{r}
+#Set seed 
+set.seed(123)
+
+sample <- sample.split(Premier$Score, SplitRatio = .75)
+train <- subset(Premier, sample == TRUE)
+test <- subset(Premier, sample == FALSE)
+```
+
+
+```{r}
+lmFormula <- as.formula("Score ~ Penalties + Fouls + Corners + Crosses + Touches + Tackles + Interceptions + Aerials.Won + Clearances + Offsides + Goal.Kicks + Throw.Ins + Long.Balls + YellowCard + RedCard + YellowRed + Possession + PassingAccuracy + SucPass + NumofPass + ShotsAccuracy + SucShots + NumofShots + SavesAccuracy + SucSaves + NumofSaves")
+```
+
+```{r}
+lmMode <- lm(lmFormula, data = train)
+lmPrediction <- predict(lmMode, test)
+cat("Linear Regression RMSE:", rmse(lmPrediction, test$Score))
+```
+#Stepwise Selection
+```{r}
+stepwModel.forward <- ols_step_forward_p(lmMode, details = FALSE)
+stepwPredictionF <- predict(stepwModel.forward$model, test)
+cat("Stepwise Fordward RMSE:", rmse(stepwPredictionF, test$Score), "\n")
+```
+
+```{r}
+stepwModel.backward <- ols_step_backward_p(lmMode, details = FALSE)
+stepwPredictionB <- predict(stepwModel.backward$model, test)
+cat("Stepwise Backward RMSE:", rmse(stepwPredictionB, test$Score), "\n")
+```
+
+```{r}
+stepwModel.both <- ols_step_both_p(lmMode, details = FALSE)
+stepwPredictionBoth <- predict(stepwModel.both$model, test)
+cat("Stepwise Both RMSE:", rmse(stepwPredictionBoth, test$Score), "\n")
+```
+
+
+```{r}
+ols_step_forward_p(lmMode)
+ols_step_backward_p(lmMode)
+ols_step_both_p(lmMode)
+```
+
+
+```{r}
+# select the variables base on stepwise and run the regression
+# We select the independent variables base on the stepwise with lowest RMSE. The stepwise both gave the lowest RMSE, which is 0.8726943.
+Regression <- lm(Score ~ SucShots + Corners + Throw.Ins + Touches + Long.Balls + Crosses + SavesAccuracy + NumofSaves + SucSaves + Possession + RedCard, data = Premier)
+summary(Regression)
+```
+
+
+```{r}
+pred <- predict(Regression, test)
+confusionMatrix <- table(pred,
+                         test$Score,
+                         dnn = c("Predictio", "Actual"))
+accuracy <- sum(diag(confusionMatrix)) / sum(confusionMatrix)
+cat("Regression Accuracy:", accuracy)
+```
+
+
+```{r}
+# visualize the regression
+Premierpos <- select(Premier, Score, SucShots, Corners, Throw.Ins, Touches, Long.Balls, Crosses, SavesAccuracy, NumofSaves, SucSaves, Possession, RedCard)
+corrplot(cor(Premierpos), method = "number")
+```
+```{r}
+# We select the independent variable has highest coefficient with Score, which is SucShots.
+ggplot(data = Premierpos, mapping = aes(x = SucShots, 
+                                     y = Score,))+
+         
+         geom_point(mapping = aes(color = SucShots))+
+         geom_smooth(method = "lm", color = "red")+
+         geom_smooth(method = "loess", color = "green")+ 
+         labs(title = "SucShots vs Score", 
+              x = "SucShots", 
+              y = "Score")
+```
+
+
+#3 Neuralnet model 
+```{r}
+#Examine range 
+summary(Premier$Score)
+```
+
+```{r}
+#Examine Distribution
+hist(Premier$Score)
+```
+
+```{r}
+normalize <- function(x){
+  return((x - min(x))/ (max(x) - min(x)))
+}
+Premier <- subset(Premier, select = -c(Penalties))
+Premier_norm <- as.data.frame(lapply(Premier, normalize))
+summary(Premier_norm$Score)
+```
+
+```{r}
+Premier_norm
+```
+
+
+```{r}
+#Sample data
+Premier_train <- Premier_norm[1:532, ]
+Premier_test <- Premier_norm[533:760, ]
+```
+
+```{r}
+set.seed(12345)
+
+Premier_numodel <- neuralnet(formula = Score ~ ., data = Premier_train)
+
+plot(Premier_numodel)
+```
+
+```{r}
+model_results <- compute(Premier_numodel, Premier_test)
+
+predict_score <- model_results$net.result
+```
+
+```{r}
+cor(predict_score, Premier_test$Score)
+```
+
