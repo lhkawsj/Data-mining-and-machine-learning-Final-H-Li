@@ -1,1 +1,2 @@
 # Data-mining-and-machine-learning-Final-H-Li
+## In this project, I tried to build a model to predict the score of a socore game. I firstly used the stepwise forward, backward and both, to determine which independent variables I should select to build the regression. Secondly I used the Neuralnet t build the model, and calculated the correlation between the predictions and the test dataset to evaluate the model.
